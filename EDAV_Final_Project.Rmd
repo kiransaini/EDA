@@ -1,0 +1,494 @@
+---
+title: "EDAV_Final_Project"
+author: "Akshata Patel"
+date: "12/9/2018"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE,
+                      message = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(forcats)
+library(scales)
+library(lubridate)
+library(ggthemes)
+library(ggthemr)
+library(plotly)
+library(psych)
+library(gridExtra)
+library(ggmosaic)
+library(rworldmap)
+library(RColorBrewer)
+library(maptools)
+
+ggthemr('fresh')
+
+data <- read.csv("The Global Dataset 3 Sept 2018.csv", na.strings = "-99")
+drop <- c('terms.use')
+data <- data[, !(names(data) %in% drop)]
+
+countries <- read.csv("countries_codes_and_coordinates.csv")
+
+colnames(data)[which(colnames(data)=="majorityStatusAtExploit")]<-"AgeCategory"
+colnames(data)[which(colnames(data)=="ageBroad")]<-"Age"
+```
+
+## INTRODUCTION
+
+We are working on the human trafficking dataset. Data on human trafficking is useful for analysing the trends between countries and developing ways to prevent these crimes of trafficking and exploitation. 
+
+# Explain why you chose this topic, and the questions you are interested in studying. 
+
+Team Memebers and contributions:
+
+* Kiran Saini: Kiran worked on creating the interactive component of the project using D3.
+* Ujjwal Peshin: Ujjwal worked on the exploratory data analysis of the dataset.
+* Akshata Patel: Akshata worked on the exploratory data analysis of the dataset.
+
+
+## DESCRIPTION OF DATA
+
+The human trafficking dataset used is a global dataset that contains data from counter-trafficking organisations around the world. We have downloaded this data from the CTDC- Counter Trafficking Data Collaborative site["https://www.ctdatacollaborative.org/"].
+
+Data Contributors :
+
+* International Organization for Migration (IOM)
+* Polaris
+* Liberty Asia
+* Case management services
+* Counter-trafficking hotline logs
+
+The Global Dataset 3 Sept 2018.csv contains data about the various types of exploitation and means of controls used on the victims. It also includes the country of citizenship of the victim, the country where the exploitation case is registered along with the year of registration. An important column of the dataset is the relationship of the victim with the recuiter.
+Data collection started in 2017 and the data contains victims registered in the IOM database from years 2002 to 2018.
+Each type of exploitation, labour performed by the victims and each means of control is an individual column that contains boolean values: 1 for true, 0 for false and -99 for missing values.
+There are four industries where exploitation based on gender is monitored : Agriculture, construction, manufacturing, domestic. 
+
+# Death csv:
+
+
+## ANALYSIS OF DATA QUALITY
+
+```{r}
+str(data)
+```
+
+
+### Missing Data
+
+There are a lot of NAs in our data, so let us check the trends of NAs in our data,
+```{r fig.width=10, fig.height=10}
+extracat::visna(data, sort = 'b')
+```
+
+### Unequal Age Intervals
+
+The Age column gives the age of teh victim at the time of the exploitation. It contains levels: 
+```{r}
+unique(data$Age)
+```
+
+The levels of the Age column are unequal intervals. This data makes the plots of Age confusing because even if there are less victims of a particular age, the total number of victims in a range would be very high if the range is large,compared to other smaller ranges. This hinders the correct comprehension of the plots. So we created levels with equal Age intervals.
+
+```{r}
+
+data$Age<-factor(data$Age,levels=c("0--8","9--17","18--20","21--23","24--26","27--29","30--38","39--47","48+"))
+data_new<-data %>% filter(data$Age!="NA")
+create_age_new<-function(ageBroad)
+{
+if(ageBroad=="0--8"){
+  "0--8"
+}else if(ageBroad=="9--17"){
+  "9--17"
+}else if(ageBroad=="18--20"){
+  "18--26"
+}else if(ageBroad=="21--23"){
+  "18--26"
+}else if(ageBroad=="24--26"){
+  "18--26"
+}else if(ageBroad=="27--29"){
+  "27--38"
+}else if(ageBroad=="30--38"){
+  "27--38"
+}else if(ageBroad=="39--47"){
+  "39--47"
+}else if(ageBroad=="48+"){
+  "48+"
+}
+}
+
+data_new$Age<-sapply(data_new$Age,create_age_new)
+data_new$Age<-factor(data_new$Age,levels=c("0--8","9--17","18--26","27--38","39--47","48+"))
+
+unique(data_new$Age)
+
+```
+
+### Country Names and ISO Codes 
+
+The dataset contains countries with their ISO codes. The plug-in "Datamaps" used for the interactive component requires alpha-3 codes for countries for plotting it on the world map. We calculated the alpha3 codes along with the country latitudes and longitudes.
+
+
+## EXPLORATORY DATA ANALYSIS
+
+First we check the trends of trafficking with each passing year. We created a line plot of the count of victims with years based on the gender of the victims.
+```{r}
+data$count <- 1
+agg_data <- aggregate(count ~ yearOfRegistration + gender, data = subset(data, !is.na(gender)), FUN = length)
+#creating date objects from numeric data
+agg_data$yearOfRegistration <- make_date(agg_data$yearOfRegistration)
+
+p <- ggplot() + 
+      geom_line(data =  agg_data,aes(x= yearOfRegistration, y = count, color = gender)) +
+      scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+      theme(legend.position="bottom") +
+      xlab("Year assisted") +
+      ylab("Count") +
+      ggtitle("Count of Females and Males trafficked with increasing years ")
+
+ggplotly(p) %>% layout(legend = list(orientation = "h", y = -0.25, x = 0.30))
+```
+
+From this graph we see that there was an increase in trafficking cases during the years 2014 to 2017. One can also observe that the number of female victims is greater than male victims for all years.
+
+This can be confirmed by the following bar plot that shows the count of victims by gender and Age.
+```{r}
+p <- ggplot() + 
+  geom_bar(data = subset(data, !is.na(gender)), aes(gender)) + 
+  xlab("Gender") + 
+  ylab("Count") +
+  ggtitle("Count of Females and Males Trafficked")
+
+ggplotly(p)
+
+f <- factor(data$AgeCategory)
+data$AgeCategory <- fct_relevel(f, "Minor")
+
+g <- ggplot() + 
+  geom_bar(data = subset(data, !is.na(AgeCategory)), aes(AgeCategory)) +
+  ggtitle("Count of Minors and Adults Trafficked") +
+  xlab("Age Category")
+
+ggplotly(g)
+
+```
+
+Trafficking vistims are mostly females and minors compared to other gender and age groups.
+A lot of victims' Age Category is unknown. This may be the case because the victims are unaware when the exploitation started, hence they cannot determine the age when the exploitation of the victim began.
+
+
+```{r fig.height=9}
+p <-  ggplot() + 
+  geom_bar(data = subset(data_new, !is.na(Age) & gender!="Unknown"), aes(Age, fill =gender), position = "dodge") +
+  ggtitle("Count of People Trafficked By Age ") +
+  facet_wrap(. ~ gender, scales = "free", ncol = 1)
+
+ggplotly(p) %>% layout(legend = list(orientation = "h", y = -0.25, x = 0.30))
+```
+
+One can observe that majority of females victims are age group 18-26 and the male victims are of the age 27-38. Feamles are trafficked in their youth whereas the males are trafficked when they have considerable strength to work.
+
+
+```{r , fig.height=7}
+
+data_filtered<-data_new %>% filter(CountryOfExploitation!="-99")
+data_filtered<-data_filtered %>% filter(Age=="18--26")
+data_count_country <- data_filtered %>% group_by(CountryOfExploitation) %>% summarize(count=n())
+
+Country_Of_Exploitation<-reorder(data_count_country$CountryOfExploitation,data_count_country$count)
+
+p<-ggplot(data_count_country)+
+  geom_point(aes(x=Country_Of_Exploitation,y=count),color="skyblue")+
+  xlab("Country of Exploitation")+
+  ylab("Count of Victims with Age 18-26")+
+  scale_y_continuous(breaks=seq(0,4000,500))+
+  coord_flip()+
+  ggtitle("Number of Victims(Age 18-26) in Various Countries")
+  
+
+ggplotly(p)
+```
+This cleveland plot shows the count of victims of the age group 18 to 26 with the country of exploitation. This shows that the countries: United States, Ukraine, Maldova,Russia,Indonesia have the highest number of cases of exploitation. The count of victims in top three countries are a lot larger than the other country counts.
+
+```{r}
+small_data <- data[58:61]
+small_data <- data.frame(values=colSums(small_data, na.rm=TRUE), names = names(small_data))
+small_data$names <- factor(c("Family","Friend","IntimatePartner","Other"))
+
+p <- ggplot() + geom_bar(data = small_data, aes(y = values, x = reorder(names,values)), stat = "identity") +
+     ggtitle("Count of Relation of Recruiter with Trafficked Person")+
+     xlab("Recruiter Relation") + 
+     ylab("Count")
+ggplotly(p)
+```
+
+This shows the relation(Family memebr, friend, partner, others/unknown person) of the recruiter/trafficker with the victim. We can see that the perpetuator of the crime can be anyone from your family, friends or even your intimate partner.
+
+```{r fig.height=8, fig.width=10}
+data_mosaic <- data %>% filter(typeOfExploitConcatenated!="Forced labour;Sexual exploitation;Combined sexual and labour exploitation" & typeOfExploitConcatenated!="Forced labour;Slavery and similar practices" & typeOfExploitConcatenated!="Other")
+
+data_mosaic$typeOfExploitConcatenated <- factor(data_mosaic$typeOfExploitConcatenated,levels=c("Forced labour","Forced marriage","Sexual exploitation","Slavery and similar practices" ))
+
+data_mosaic$gender <- factor(data_mosaic$gender,levels=c("Female","Male") )
+data_mosaic$AgeCategory <- factor(data_mosaic$AgeCategory,levels=c("Minor","Adult"))
+
+p<-ggplot(data = data_mosaic) +
+   geom_mosaic(aes(x = product(gender,typeOfExploitConcatenated),conds=product(AgeCategory), fill=typeOfExploitConcatenated), na.rm=TRUE) +
+  # facet_grid(AgeCategory~.) +
+   ggtitle("Type of Exploitation By Gender And Age") +
+   xlab("") +
+   ylab("") +
+   theme(legend.title=element_blank())
+ 
+
+ggplotly(p) %>% layout(legend = list(orientation = "h", y = -0.25, x = 0.30))
+
+```
+
+The mosaic plot shows the proportion of the types of exploitation by gender and age category i.e. minor and adult. It can be seen that the proportion of victims sexually exploited is the maximum among both females minors and adults. The proportion of forced labour is greater in male adults than female adults. The proportion of sexual exploitation is greater in female adults than male adults.
+
+
+```{r}
+small_data <- data[9:26]
+small_data <- data.frame(values=colSums(filter(small_data,small_data$meansOfControlNotSpecified!=1), na.rm=TRUE), names = names(filter(small_data,small_data$meansOfControlNotSpecified!=1)))
+
+small_data <- small_data %>% arrange(values)
+
+factors <- levels(small_data$names)
+factors <- sapply(factors,function(one_factor){
+  substring(one_factor,15)
+})
+
+small_data$names <- factors
+ggthemr('fresh')
+p <- ggplot() + geom_bar(data = small_data, aes(y = values, x = names), stat = "identity") + coord_flip() +
+    ggtitle("Means of control used on Victims") +
+    ylab("Count") + xlab("")
+
+ggplotly(p)
+```
+
+The bar plot shows the count of victims with the different means of control used by the trafficker on them.
+
+```{r}
+small_data <- data[36:48]
+small_data <- data.frame(values=colSums(small_data, na.rm=TRUE), names = names(small_data))
+
+small_data <- small_data %>% arrange(values)
+
+factors <- levels(small_data$names)
+factors <- sapply(factors,function(one_factor){
+  substring(one_factor,7)
+})
+
+small_data$names <- factors
+ggthemr_reset()
+ggthemr('fresh')
+p <- ggplot() + geom_bar(data = small_data, aes(y = values, x = names), stat = "identity") + coord_flip() +
+    ggtitle("Type Of Labour performed by the victims")+
+    ylab("Count") + xlab("") +
+    scale_y_continuous(breaks=seq(from = 0, to = 3000, by = 500))
+ggplotly(p)
+```
+
+This bar plot shows the count of the victims and the type of labour they are forced to perform. Victims are majorly exploited to work in the labout transportation sector.
+Types of labour classified by gender and age is shown in the mosaic plot below:
+
+```{r,fig.height=14, fig.width=13}
+
+data_mosaic <- data %>% filter(typeOfLabourConcatenated!="Agriculture;Not specified" & typeOfLabourConcatenated!="Construction;Not specified" & typeOfLabourConcatenated!="Domestic Work;Not specified" & typeOfLabourConcatenated!="Domestic work;Other" & typeOfLabourConcatenated!="Other;Not specified" & typeOfLabourConcatenated!="Other" & typeOfLabourConcatenated!="Not specified" & AgeCategory!="Unknown")
+
+data_mosaic$typeOfLabourConcatenated <- factor(data_mosaic$typeOfLabourConcatenated,levels=c("Agriculture","Aquafarming","Begging","Construction","Domestic work","Hospitality","Manufacturing","Peddling","Sexual exploitation"))
+
+data_mosaic$gender <- factor(data_mosaic$gender,levels=c("Female","Male") )
+data_mosaic$AgeCategory <- factor(data_mosaic$AgeCategory,levels=c("Minor","Adult"))
+
+ggthemr('fresh',text_size = 12)
+swatch_colours <- c('#1F77B4', '#FF7F0E', '#2CA02C', '#D62728', '#9467BD', '#8C564B', '#CFECF9', '#7F7F7F', '#BCBD22', '#17BECF')#,"#555555","#EEEEEE")
+set_swatch(swatch_colours)
+
+ggplot(data = data_mosaic) +
+   geom_mosaic(aes(x = product(typeOfLabourConcatenated , gender), fill=typeOfLabourConcatenated), na.rm=TRUE) +
+   facet_grid(.~AgeCategory) +
+   ggtitle("Type of Labour Performed By Victim Gender And Age") +
+   xlab("") +
+   ylab("") +
+   theme(legend.title=element_blank()) +
+   theme(legend.position="bottom")
+```
+
+From the graph, one can observe the different types of labour prominent among different age categories of males and females. Minor females are engaged in begging and males are engaged in peddling. Adult females are engaged in agriculture and males (as expected) are employed in construction. 
+
+
+```{r}
+small_data <- select(data,c(50:53,3,4))
+
+small_data_female <- small_data %>% filter(gender=="Female") %>% select(1:4)
+small_data_female <- data.frame(values=colSums(small_data_female, na.rm=TRUE), names = names(small_data_female),gender="Female")
+
+
+small_data_male <- small_data %>% filter(gender=="Male") %>% select(1:4)
+small_data_male <- data.frame(values=colSums(small_data_male, na.rm=TRUE), names = names(small_data_male),gender="Male")
+
+
+#small_data <- data.frame(values=colSums(small_data, na.rm=TRUE), names = names(small_data))
+small_data <- rbind(small_data_female,small_data_male)
+
+small_data <- small_data %>% arrange(-values)
+
+factors <- small_data$names
+factors <- sapply(factors,function(one_factor){
+  substring(one_factor,7)
+})
+
+small_data$names <- factors
+ggthemr('fresh')
+p <- ggplot() + geom_bar(data = small_data, aes(y = values, x = reorder(names,values),fill=gender), stat = "identity",position="dodge") + coord_flip() +
+    ggtitle("Type of Sexual Abuse on Victims") +
+    ylab("Count") + xlab("")+
+    scale_y_continuous(breaks=seq(0,5000,1000))
+
+ggplotly(p)
+```
+
+Type of sexual abuse is more prominent for female victims and it is insignificant for male victims.
+We further saw the distribution of sexual abuse victims' age groups for minor females in the following bar chart.
+
+```{r fig.width=10}
+small_data_female <- data_new %>% filter(gender=="Female") %>% select(c(50:53,4))
+
+small_data_female <- small_data_female %>% group_by(Age) %>% select(1:5) %>% summarise(SexProstitution= sum(typeOfSexProstitution==1,na.rm=TRUE),SexPornography= sum(typeOfSexPornography==1,na.rm=TRUE),SexPrivateSexualServices= sum(typeOfSexPrivateSexualServices==1,na.rm=TRUE),SexRemoteInteractiveServices= sum(typeOfSexRemoteInteractiveServices==1,na.rm=TRUE))
+
+small_data_female <- gather(small_data_female,key="TypeOfSexualExploitation",value="Value",-Age)
+ggthemr('fresh')
+p <- ggplot() + geom_bar(data = small_data_female, aes(y=Value,x =reorder(TypeOfSexualExploitation,-Value ),fill=Age), stat = "identity",position="dodge") +
+    ggtitle("Type of Sexual Abuse on Victims") +
+    ylab("Count") + xlab("")
+
+ggplotly(p)
+```
+
+Sexual prostitution is the most common form of sexual abuse in adult females. The majority of these victims are of the age group 9 to 26.
+
+
+```{r}
+countries <- read.csv('all.csv')
+
+data <- merge(x = data,
+              y = countries[,c('alpha.2', 'region', 'sub.region')], 
+              by.x = "CountryOfExploitation", 
+              by.y = "alpha.2", 
+              all.x = TRUE)
+ggthemr_reset()
+p <- ggplot() + geom_bar(data = data, aes(sub.region)) + coord_flip()+
+    ggtitle("Count of victims in Sub regions")
+
+ggplotly(p)
+```
+
+
+```{r}
+data(wrld_simpl)
+
+data_countries <- read.csv("count_country_to_country.csv")
+
+data_countries_sum <- data_countries %>% group_by(CountryOfExploitation) %>% summarise(sum_values = sum(value))
+
+data_countries_sum <- data_countries_sum %>% filter(data_countries_sum$CountryOfExploitation!="NA")
+
+pal <- colorRampPalette(brewer.pal(9, 'Reds'))(length(data_countries_sum$sum_values))
+pal <- pal[with(data_countries_sum, findInterval(sum_values, sort(unique(sum_values))))]
+
+col <- rep(grey(1.0), length(wrld_simpl@data$ISO2))
+
+arr<-match(data_countries_sum$CountryOfExploitation, wrld_simpl@data$ISO2) 
+arr <- arr[!is.na(arr)]
+col[arr] <- pal[0:(length(arr))]
+
+plot(wrld_simpl, col = col,main="Heat Map of Exploitation Cases")
+```
+
+The world map shows the heat map of the count of cases in the country of exploitation. The darker regions have a higher count of victims. We tried using the rworldmap for the heat map, but it was not being knit into the output of the html file. For generating this heat map, we have used maptools library and given each region a color based on its case count. The issue with this map is that the legend is not visible. One cannot know the exact count of the region count by the map, but can compare the count of victims for all countries.  
+
+```{r}
+data1 <- read.csv("The Global Dataset 3 Sept 2018.csv", na.strings = "-99")
+drop <- c('terms.use')
+data1 <- data1[, !(names(data1) %in% drop)]
+
+countries <- read.csv('all.csv')
+
+data1 <- merge(x = data1,
+              y = countries[,c('alpha.2', 'region', 'sub.region')], 
+              by.x = "citizenship", 
+              by.y = "alpha.2", 
+              all.x = TRUE)
+
+p <- ggplot() + geom_bar(data = data1, aes(sub.region)) + coord_flip() +
+     ggtitle("Count of victims based on their nationality")
+
+ggplotly(p)
+
+```
+This plot shows the victims based on their country of citizenship.
+
+## EXECUTIVE SUMMARY
+
+```{r fig.width=10}
+f <- factor(data$AgeCategory)
+data$AgeCategory <- fct_relevel(f, "Minor")
+
+ggthemr_reset()
+ggthemr('fresh')
+p <-  ggplot() + 
+  geom_bar(data = subset(data, !is.na(AgeCategory)), aes(AgeCategory, fill = gender), position = "dodge") +
+  facet_wrap(. ~ gender, scales = "free") +
+  xlab("") +
+  ggtitle("Count of People Trafficked by Gender")
+
+ggplotly(p) %>% layout(legend = list(orientation = "h", y = -0.25, x = 0.30))
+```
+
+```{r}
+
+recruiter_rel_hospitality <- read.csv("Recruiter relationship hospitality sector.csv", na.strings = "-99")
+#tidy_recruiter_rel_hospitality <- recruiter_rel_hospitality %>% gather(key="Key",value="Value",-Relationship.with.recruiter)
+
+recruiter_rel_manufacturing <- read.csv("Recruiter relationship manufacturing sector_0.csv", na.strings = "-99")
+recruiter_rel_construction <- read.csv("Recruiter relationship construction sector_0.csv", na.strings = "-99")
+recruiter_rel_domestic <- read.csv("Recruiter relationship domestic sector_0.csv", na.strings = "-99")
+recruiter_rel_agriculture <- read.csv("Recruiter relationship agriculture sector_0.csv", na.strings = "-99")
+
+recruiter_data<-Reduce(function(x, y) merge(x, y, ,by='Relationship.with.recruiter',all=TRUE), list(recruiter_rel_hospitality, recruiter_rel_manufacturing, recruiter_rel_construction,recruiter_rel_domestic,recruiter_rel_agriculture))
+
+recruiter_data <- recruiter_data %>% filter(Relationship.with.recruiter!="Other") %>% gather(key="Industry",value="Value",-Relationship.with.recruiter)
+
+split_in_out<- function(industry_str)
+{
+  ind_split <- unlist(strsplit(industry_str,"[.]"))
+  ind_split[[2]]
+}
+recruiter_data$In_Out <- sapply(recruiter_data$Industry,split_in_out)
+
+split_in_out<- function(industry_str)
+{
+  ind_split <- unlist(strsplit(industry_str,"[.]"))
+  ind_split[[3]]
+}
+recruiter_data$Industry <- sapply(recruiter_data$Industry,split_in_out)
+
+ggthemr('fresh')
+p <- ggplot() + geom_bar(data = recruiter_data %>% filter(recruiter_data$In_Out=="in"), aes(x = Industry, y = Value,fill=Relationship.with.recruiter),position='dodge', stat = "identity")+
+     ggtitle("Recruiter Relation by Industry") +
+    coord_flip() +
+    xlab("") +
+    ylab("Percent of Victims") 
+   # facet_wrap(. ~ In_Out, ncol = 2)
+ggplotly(p) %>% layout(legend = list(orientation = "h", y = -0.25, x = 0.30))
+
+```
