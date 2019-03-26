@@ -1,7 +1,5 @@
 ---
 title: "EDAV_Final_Project"
-author: "Akshata Patel"
-date: "12/9/2018"
 output:
   html_document: default
   pdf_document: default
@@ -43,14 +41,9 @@ colnames(data)[which(colnames(data)=="ageBroad")]<-"Age"
 ## INTRODUCTION
 
 We are working on the human trafficking dataset. Data on human trafficking is useful for analysing the trends between countries and developing ways to prevent these crimes of trafficking and exploitation. 
+ 
 
-# Explain why you chose this topic, and the questions you are interested in studying. 
 
-Team Memebers and contributions:
-
-* Kiran Saini: Kiran worked on creating the interactive component of the project using D3.
-* Ujjwal Peshin: Ujjwal worked on the exploratory data analysis of the dataset.
-* Akshata Patel: Akshata worked on the exploratory data analysis of the dataset.
 
 
 ## DESCRIPTION OF DATA
